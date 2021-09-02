@@ -36,34 +36,43 @@ namespace OHLCConverter
         // relative small number of candles/bars with timeframe > 1 minute (the resizing of when append whould not be an issue).
         List<OHLC> chart = new();
         
-        public readonly TimeSpan timeframe;
+        public readonly int timeframe;
         public readonly TimeSpan sessionStart;
         public readonly TimeSpan sessionEnd;
 
-        DateTime date;
-        TimeSpan openTime;
+        DateTime tDate;
+        TimeSpan tOpenTime;
         decimal tOpen;
         decimal tHigh;
         decimal tLow;
         decimal tClose;
-        bool startNewBar = true;
-
+        bool startNewBar = true;       
         
         
-        
-        public Converter(TimeSpan timeframe, TimeSpan sessionStart, TimeSpan sessionEnd)
+        public Converter(int nnTarget, TimeSpan sessionStart, TimeSpan sessionEnd)
         {
-            this.timeframe = timeframe;
+            this.timeframe = nnTarget;
             this.sessionStart = sessionStart;
-            this.sessionEnd = sessionEnd;
+            this.sessionEnd = sessionEnd;            
         }
 
         public void Convert(decimal m1Open, decimal m1High, decimal m1Low, decimal m1Close, DateTime m1Date, TimeSpan m1Time)
         {
-            if (startNewBar)
+            var minutesOffset = m1Time.Minutes;
+            
+            if (isNewBar())
             {
-                this.openTime = m1Time;
+                this.tOpenTime = new(m1Time.Hours, minutesOffset - minutesOffset % timeframe, 0);
 
+            }
+
+            bool isNewBar()
+            {
+                return 
+                    m1Time.Subtract(tOpenTime).TotalMinutes > timeframe
+                    || m1Date > tDate;   
+                
+                
             }
         }
 

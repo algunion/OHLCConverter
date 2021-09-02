@@ -13,7 +13,7 @@ namespace OHLCConverter
 
             var p = new Program();
 
-            await p.TestCSV(@"D:\order_157717.tar\order_157717\table_mxim.csv");
+            await p.ConvertCSV(@"D:\order_157717.tar\order_157717\table_mxim.csv");
             Console.WriteLine("Finished");
 
             //OHLC r = new() { Open = 10m; High = 10 };
@@ -27,9 +27,8 @@ namespace OHLCConverter
             
         }
         // @"D:\order_157717.tar\order_157717\table_mxim.csv"
-        public async Task TestCSV(string path)
+        public async Task ConvertCSV(string path)
         {
-            int count = 0;
             using var csv = await Sylvan.Data.Csv.CsvDataReader.CreateAsync(path);            
 
             while (await csv.ReadAsync())
@@ -41,17 +40,14 @@ namespace OHLCConverter
                 var l = csv.GetDecimal(4);
                 var c = csv.GetDecimal(5);
                 
-                // some volume values are represented by scientific notation in the source files
-                // using NumberStyles.Float fixes the parsing issue
-                // also, there are volume values that are represented as floating points so I decided to go
-                // with deciamal (integer is not a valid option anyway) instead of float to avoid precision related issues
-                var v = Decimal.Parse(csv.GetString(6), NumberStyles.Float);
-
-
-                count++;
+                // Some volume values are represented by scientific notation in the source files,
+                // using NumberStyles.Float fixes the parsing issue.
+                // Also, there are volume values that are represented as floating points so I decided to go
+                // with deciamal (integer is not a valid option anyway) instead of float to avoid precision related issues.
+                var vol = Decimal.Parse(csv.GetString(6), NumberStyles.Float);                
             }
 
-            Console.WriteLine("Count is: {0}", count);
+            
 
 
             // helper local functions for custom dataformat and time parsing

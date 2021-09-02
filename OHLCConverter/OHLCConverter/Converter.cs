@@ -20,13 +20,13 @@ namespace OHLCConverter
         {
             return
                 String.Join(separator, new string[] {
-                    this.Date.ToString("yyyyMMdd"),
-                    this.OpenTime.ToString("hmm"),
-                    this.Open.ToString(),
-                    this.High.ToString(),
-                    this.Low.ToString(),
-                    this.Close.ToString(),
-                    this.Volume.ToString()
+                    Date.ToString("yyyyMMdd"),
+                    OpenTime.ToString("hmm"),
+                    $"{Open}",
+                    $"{High}",
+                    $"{Low}",
+                    $"{Close}",
+                    $"{Volume}"                    
                 });
         }
     }
@@ -36,24 +36,23 @@ namespace OHLCConverter
         // relative small number of candles/bars with timeframe > 1 minute (the resizing of when append whould not be an issue).
         List<OHLC> chart = new();
         
-        public readonly int timeframe;
-        public readonly TimeSpan sessionStart;
-        public readonly TimeSpan sessionEnd;
+        readonly int _timeFrame;
+        readonly TimeSpan _sessionStart;
+        readonly TimeSpan _sessionEnd;
 
-        DateTime tDate;
-        TimeSpan tOpenTime;
-        decimal tOpen;
-        decimal tHigh;
-        decimal tLow;
-        decimal tClose;
-        bool startNewBar = true;       
+        DateTime _openDate;
+        TimeSpan _openTime;
+        decimal _open;
+        decimal _high;
+        decimal _low;
+        decimal _close;     
         
         
         public Converter(int nnTarget, TimeSpan sessionStart, TimeSpan sessionEnd)
         {
-            this.timeframe = nnTarget;
-            this.sessionStart = sessionStart;
-            this.sessionEnd = sessionEnd;            
+            _timeFrame = nnTarget;
+            _sessionStart = sessionStart;
+            _sessionEnd = sessionEnd;            
         }
 
         public void Convert(decimal m1Open, decimal m1High, decimal m1Low, decimal m1Close, DateTime m1Date, TimeSpan m1Time)
@@ -62,15 +61,16 @@ namespace OHLCConverter
             
             if (isNewBar())
             {
-                this.tOpenTime = new(m1Time.Hours, minutesOffset - minutesOffset % timeframe, 0);
+                _openTime = new(m1Time.Hours, minutesOffset - minutesOffset % _timeFrame, 0);
+                
 
             }
 
             bool isNewBar()
             {
                 return 
-                    m1Time.Subtract(tOpenTime).TotalMinutes > timeframe
-                    || m1Date > tDate;   
+                    m1Time.Subtract(_openTime).TotalMinutes > _timeFrame
+                    || m1Date > _openDate;   
                 
                 
             }

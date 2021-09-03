@@ -122,9 +122,7 @@ namespace OHLCConverter
                     m1Bar.OpenTime.Subtract(_openTime).TotalMinutes > _timeFrame
                     || m1Bar.Date > _openDate;                  
                 
-            }
-
-            
+            }            
                
             // Added support for all possible time intervals.
             // For example: session starting at 10pm and session ending at 6am.

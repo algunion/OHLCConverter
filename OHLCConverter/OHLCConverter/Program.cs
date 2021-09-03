@@ -9,7 +9,24 @@ using Sylvan.Data;
 namespace OHLCConverter
 {
     class Program
-    {        
+    {
+        /// <summary>
+        /// The console application can be used in two different modes:
+        /// 1) dotnet run --batch-mode true --timeframe 30 --source-dir yourdirpathhere --target-dir yourtargetdir
+        /// In "--batch-mode true" you need to also specify the --source-dir and --target-dir arguments.
+        /// 2) dotnet run --batch-mode false --timeframe 5 --source-file yourcsvpathhere --target-file optionalcsvtarget
+        /// In "--batch-mode false" you need to specify the --source-file (and if you don't specify the --target-file, a file will be produced 
+        /// in the working directory using the pattern: symbol$INTRADAYNN.csv).
+        /// 
+        /// Please keep in mind that in order to identify the symbol in the filename, the current application uses the _ (underscore) character
+        /// to split the name and extract the symbol part - I didn't try/catch potential issues in the filename.
+        /// 
+        /// If you want to use the startSession and endSession, this are valid commands:
+        /// dotnet run --batch-mode true --timeframe 30 --source-dir yourdirpathhere --target-dir yourtargetdir --session-start 10:00 --session-end 22:00
+        /// 
+        /// </summary>
+        /// <param name="args"></param>
+        /// <returns></returns>
         static async Task<int> Main(string[] args)
         {
             var rootCommand = new RootCommand

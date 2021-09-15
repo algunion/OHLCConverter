@@ -11,17 +11,17 @@ namespace OHLCConverter
     {
         public IReadOnlyList<DateTime> GetTradingDates(DateTime startDate, DateTime endDate)
         {
-            // returning descending
             return Enumerable.Range(0, 1 + endDate.Subtract(startDate).Days)
-                .Select(offset => startDate.AddDays(offset)).Reverse().ToArray();
+                .Select(offset => startDate.AddDays(offset))
+                .ToArray();
         }
     }
 
     class ServerEntityBatchSaver : IServerEntityBatchSaver
     {
-        List<HistoricEodDataServerEntity> eodDatas = new();
-        List<HistoricSplitServerEntity> splitDatas = new();
-        List<HistoricDividendServerEntity> dividDatas = new();
+        readonly List<HistoricEodDataServerEntity> eodDatas = new();
+        readonly List<HistoricSplitServerEntity> splitDatas = new();
+        readonly List<HistoricDividendServerEntity> dividDatas = new();
         
         public void BatchSave(HistoricEodDataServerEntity entity)
         {
@@ -38,31 +38,56 @@ namespace OHLCConverter
             dividDatas.Add(entity);
         }
 
-        public void DropToCsv(string path)
+        /// <summary>
+        /// Testing purposes only.
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="sep"></param>
+        /// <returns></returns>
+        public async Task DropToCsv(string path, string sep = ",")
         {
             var lines = new List<string>();
 
-            foreach (var i in Enumerable.Range(0, eodDatas.Count))
+            var splitDict = splitDatas.ToDictionary(x => x.ExDividendDate, x => x);
+            var dividendsDict = dividDatas.ToDictionary(x => x.ExDividendDate, x => x);
+
+            foreach (var ohlc in eodDatas)
             {
-                lines.Add(CSVRow(eodDatas[i], splitDatas[i], dividDatas[i]));
+                var row = CSVRow(ohlc);
+                var splitStr = "NA";
+                var divStr = "NA";
+                
+                if (splitDict.ContainsKey(ohlc.TradingDate))
+                {
+                    var sp = splitDict[ohlc.TradingDate];
+                    splitStr = $"{sp.OldShares}/{sp.NewShares}";
+                }
+
+                if (dividendsDict.ContainsKey(ohlc.TradingDate))
+                {
+                    var d = dividendsDict[ohlc.TradingDate];
+                    divStr = $"{d.Dividend}";
+                }
+
+                row = $"{row}{sep}{splitStr}{sep}{divStr}";
+
+                lines.Add(row);
             }
 
-            File.WriteAllLines(path, lines);
+            await File.WriteAllLinesAsync(path, lines);
         }
 
-        private string CSVRow(HistoricEodDataServerEntity entity, HistoricSplitServerEntity split, HistoricDividendServerEntity div, string separator = ",")
+        private string CSVRow(HistoricEodDataServerEntity entity, string sep = ",")
         {
             return
-                String.Join(separator, new string[] {
+                String.Join(sep, new string[] {
                     entity.TradingDate.ToString("yyyy-MM-dd"),
                     entity.TradingDate.TimeOfDay.ToString("hmm"),
                     $"{entity.Open}",
                     $"{entity.High}",
                     $"{entity.Low}",
                     $"{entity.Close}",
-                    $"{entity.VolumeInHundreds}",
-                    $"{split.NewShares}",                    
-                    $"{div.Dividend}"
+                    $"{entity.VolumeInHundreds}"
                 });
         }
     }

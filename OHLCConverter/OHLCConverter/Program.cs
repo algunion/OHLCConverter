@@ -18,7 +18,7 @@ namespace OHLCConverter
         /// 2) dotnet run --batch-mode false --timeframe 5 --source-file yourcsvpathhere --target-file optionalcsvtarget
         /// In "--batch-mode false" you need to specify the --source-file (and if you don't specify the --target-file, a file will be produced 
         /// in the working directory using the pattern: symbol$INTRADAYNN.csv).
-        /// 3) dotnet run --batch-mode false --timeframe 5 --source-file inputpath --pseudo-eod-mode true --session-start 09:00 --session-end 16:00
+        /// 
         /// I created some mockup implementations for the provided interfaces - just to be able to test the app
         ///
         ///
@@ -31,7 +31,7 @@ namespace OHLCConverter
         /// </summary>
         /// <param name="args"></param>
         /// <returns></returns>
-        static async Task<int> Main(string[] args)
+        static int Main(string[] args)
         {
             var rootCommand = new RootCommand
             {
@@ -57,21 +57,18 @@ namespace OHLCConverter
                     "CSV path for the converted file (default: saved locally using the symbol$INTRADAYNN.csv pattern)."),
                 new Option<TimeSpan>(
                     "--session-start",
-                    "Session start time: e. g. 9:30"),
+                    getDefaultValue: () => new TimeSpan(9, 30, 0),
+                    description: "Session start time: e. g. 9:30"),
                 new Option<TimeSpan>(
                     "--session-end",
-                    "Session end time: e. g. 16:00"),
-                new Option<bool>(
-                    "--pseudo-eod-mode",
-                    getDefaultValue: () => false,
-                    description: "Running the convertor in Pseudo EOD mode")
-            };            
+                    getDefaultValue: () => new TimeSpan(16, 00, 0),
+                    description: "Session end time: e. g. 16:00")
+            };
 
             rootCommand.Description = "OHLC bar convertor";
-            var p = new Program();
-            rootCommand.Handler = 
-                CommandHandler.Create<int, bool, FileInfo, FileInfo, FileInfo, FileInfo, TimeSpan, TimeSpan, bool>(
-                    async (timeFrame, batchMode, sourceDir, targetDir, sourceFile, targetFile, sessionStart, sessionEnd, pseudoEOD) =>
+            rootCommand.Handler =
+                CommandHandler.Create<int, bool, FileInfo, FileInfo, FileInfo, FileInfo, TimeSpan, TimeSpan>(
+                    async (timeFrame, batchMode, sourceDir, targetDir, sourceFile, targetFile, sessionStart, sessionEnd) =>
                     {
                         Console.WriteLine($"--timeframe is: {timeFrame}");
                         Console.WriteLine($"--batch-mode is: {batchMode}");
@@ -80,8 +77,7 @@ namespace OHLCConverter
                         Console.WriteLine($"--source-file is: {sourceFile?.FullName ?? null}");
                         Console.WriteLine($"--target-file is: {targetFile?.FullName ?? null}");
                         Console.WriteLine($"--session-start is: {sessionStart}");
-                        Console.WriteLine($"--session-end is: {sessionEnd}");
-                        Console.WriteLine($"--pseudo-eod-mode is: {pseudoEOD}");
+                        Console.WriteLine($"--session-end is: {sessionEnd}");                        
                         Console.WriteLine();
 
                         if (batchMode)
@@ -101,40 +97,22 @@ namespace OHLCConverter
                                     foreach (var f in csvFiles)
                                     {
                                         Console.WriteLine($"Processing {f}");
-                                        
-                                        if (pseudoEOD)
-                                        {
-                                            await p.PseudoEOD(f, timeFrame, sessionStart, sessionEnd);
-                                        } 
-                                        else
-                                        {
-                                            await p.ConvertCSV(f, timeFrame, sessionStart, sessionEnd, targetDir: targetDir.FullName);
-                                        }
-                                        
-                                    }    
-                                }   
-                            } 
+                                        await PseudoEOD(f, timeFrame, sessionStart, sessionEnd, targetDir: targetDir.FullName);
+
+                                    }
+                                }
+                            }
                             else
                             {
                                 Console.WriteLine("Please check --source-dir and --target-dir values!");
-                            }                  
-                        } 
+                            }
+                        }
                         else
                         {
                             if (sourceFile is not null && sourceFile.Exists)
                             {
-                                if (pseudoEOD)
-                                {
-                                    Console.WriteLine($"Processing {sourceFile.FullName} in pseudo-eod-mode");
-                                    await p.PseudoEOD(sourceFile.FullName, timeFrame, sessionStart, sessionEnd);
-                                } 
-                                else
-                                {
-                                    Console.WriteLine($"Processing {sourceFile.FullName}");
-                                    await p.ConvertCSV(sourceFile.FullName, timeFrame, sessionStart, sessionEnd, targetFile?.FullName ?? "");
-                                }
-                                
-                                
+                                Console.WriteLine($"Processing {sourceFile.FullName}");
+                                await PseudoEOD(sourceFile.FullName, timeFrame, sessionStart, sessionEnd);
                             }
                             else
                             {
@@ -143,46 +121,38 @@ namespace OHLCConverter
                         }
                     });
 
-            return rootCommand.InvokeAsync(args).Result;    
+            return rootCommand.InvokeAsync(args).Result;
 
         }
         
-        public async Task ConvertCSV(string sourcePath, int timeframe, TimeSpan sessionStart, TimeSpan sessionEnd, string targetPath = "", string targetDir = "")
-        {
-            Converter converter = new(timeframe, sourcePath, sessionStart, sessionEnd);
-
-            await converter.Start();
-            await converter.WriteCSVAsync(makeTargetFileName());            
-
-            string makeTargetFileName()
-            {
-                var symbol = Path.GetFileNameWithoutExtension(sourcePath).Split("_")[1];
-                var fileName = $"{symbol.ToUpper()}$INTRADAY{timeframe}.csv";
-
-                if (!String.IsNullOrEmpty(targetDir))
-                {                    
-                    return Path.Combine(targetDir, fileName);
-                }
-                else if (!String.IsNullOrEmpty(targetPath))
-                {
-                    return targetPath;
-                }
-
-                return fileName;                
-                
-            }
-        }
-        
-        public async Task PseudoEOD(string sourcePath, int timeframe, TimeSpan sessionStart, TimeSpan sessionEnd)
+        public static async Task PseudoEOD(string sourcePath, int timeframe, TimeSpan sessionStart, TimeSpan sessionEnd, string targetPath = "", string targetDir = "")
         {
             var dataManager = new DataManager(timeframe, sessionStart, sessionEnd, DateTime.Now.Date, new TradingDateService());
             var batchSaver = new ServerEntityBatchSaver();
+            
             Console.WriteLine("Creating Pseudo EOD data...");
-            var task = dataManager.CreatePseudoEODDataFromMinuteBarCsvAsync(sourcePath, 10, batchSaver);            
-            task.Wait();
+            await dataManager.CreatePseudoEODDataFromMinuteBarCsvAsync(sourcePath, 10, batchSaver);
+            
             Console.WriteLine("Writing CSV file...");
-            batchSaver.DropToCsv("output_test.csv");
+            await batchSaver.DropToCsv(MakeTargetFileName(sourcePath, timeframe, targetDir, targetPath));
             Console.WriteLine("Done...");
+        }
+
+        static string MakeTargetFileName(string sourcePath, int timeframe, string targetDir = "", string targetPath = "")
+        {
+            var symbol = Path.GetFileNameWithoutExtension(sourcePath).Split("_")[1];
+            var fileName = $"{symbol.ToUpper()}$INTRADAY{timeframe}.csv";
+
+            if (!String.IsNullOrEmpty(targetDir))
+            {
+                return Path.Combine(targetDir, fileName);
+            }
+            else if (!String.IsNullOrEmpty(targetPath))
+            {
+                return targetPath;
+            }
+
+            return fileName;
         }
     }
 

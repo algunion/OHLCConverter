@@ -13,17 +13,17 @@ namespace OHLCConverter
 {
     public record OHLC()
     {
-        public decimal Open { get; init; }
-        public decimal High { get; init; }
-        public decimal Low { get; init; }
-        public decimal Close { get; init; }
+        public double Open { get; init; }
+        public double High { get; init; }
+        public double Low { get; init; }
+        public double Close { get; init; }
         public decimal Volume { get; init; }
         public DateTime Date { get; init; }
         public TimeSpan OpenTime { get; init; }
 
-        public decimal Splits { get; init; }
+        public decimal SplitRatio { get; init; }
         public decimal Extra2 { get; init; }
-        public decimal Dividends { get; init; }
+        public double Dividend { get; init; }
 
         public string CSVRow(string separator = ",")
         {
@@ -36,9 +36,9 @@ namespace OHLCConverter
                     $"{Low}",
                     $"{Close}",
                     $"{Volume}",
-                    $"{Splits}",
+                    $"{SplitRatio}",
                     $"{Extra2}",
-                    $"{Dividends}"
+                    $"{Dividend}"
                 });
         }
     }
@@ -48,10 +48,9 @@ namespace OHLCConverter
     /// </summary>
     class Converter
     {
-
-        // relative small number of candles/bars with timeframe > 1 minute (the resizing of when append whould not be an issue).
-        readonly List<OHLC> chart = new();
-
+        List<OHLC> _chart;
+        
+        readonly int _instrumentId;
         readonly int _timeframe;
         readonly string _sourcePath;
         readonly TimeSpan _sessionStart;
@@ -59,26 +58,49 @@ namespace OHLCConverter
 
         DateTime _openDate;
         TimeSpan _openTime;
-        decimal _open;
-        decimal _high = Decimal.MinValue;
-        decimal _low = Decimal.MaxValue;
-        decimal _close;
+        double _open;
+        double _high = Double.MinValue;
+        double _low = Double.MaxValue;
+        double _close;
         decimal _volume = 0;
         bool init = false;
-        decimal _extra1;
+        decimal _splitRatio;
         decimal _extra2;
-        decimal _extra3;
+        double _dividend;
+        bool _split = false;
+        decimal _prevSplitRatio;
+
+        readonly bool _saveChart;
+        readonly DataManager _dataManager;
+        readonly IServerEntityBatchSaver _batchSaver;
 
 
-        public Converter(int timeFrame, string sourcePath, TimeSpan sessionStart, TimeSpan sessionEnd)
+        public Converter(
+            int instrumentId, 
+            int timeFrame, 
+            string sourcePath, 
+            TimeSpan sessionStart, 
+            TimeSpan sessionEnd, 
+            DataManager dataManager, 
+            IServerEntityBatchSaver batchSaver, 
+            bool localChart = false)
         {
+            _instrumentId = instrumentId;
             _timeframe = timeFrame;
             _sourcePath = sourcePath;
             _sessionStart = sessionStart;
             _sessionEnd = sessionEnd;
+            _dataManager = dataManager;
+            _batchSaver = batchSaver;
+
+            if (localChart)
+            {
+                _chart = new List<OHLC>();
+                _saveChart = true;
+            }
         }
 
-        public async Task Start()
+        public async Task BatchSave()
         {
             // config no headers (this can also be added in the constructor)
             var options = new CsvDataReaderOptions { HasHeaders = false };
@@ -88,7 +110,13 @@ namespace OHLCConverter
 
             while (await csv.ReadAsync())
             {
-                Convert(readBar());
+                var bar1M = readBar();
+                
+                // Depending on the timeframe and mapping from
+                // bars to eod, we might need to skip some data
+                // (see also your description on this).
+                if (bar1M.Date >= _dataManager.DateLimit)
+                    Convert(readBar());
             }
 
             // commit the last in-progress bar
@@ -98,11 +126,10 @@ namespace OHLCConverter
             {
                 var date = dateTimeParser(csv.GetString(0));
                 var time = timeParser(csv.GetString(1));
-                var o = csv.GetDecimal(2);
-                var h = csv.GetDecimal(3);
-                var l = csv.GetDecimal(4);
-                var c = csv.GetDecimal(5);
-
+                var o = csv.GetDouble(2);
+                var h = csv.GetDouble(3);
+                var l = csv.GetDouble(4);
+                var c = csv.GetDouble(5);
 
                 // Some volume values are represented by scientific notation in the source files,
                 // using NumberStyles.Float fixes the parsing issue.
@@ -110,9 +137,9 @@ namespace OHLCConverter
                 // with deciamal (integer is not a valid option anyway) instead of float to avoid precision related issues.
                 var vol = Decimal.Parse(csv.GetString(6), NumberStyles.Float);
 
-                var extra1 = csv.GetDecimal(7);
+                var splitRatio = csv.GetDecimal(7);
                 var extra2 = csv.GetDecimal(8);
-                var extra3 = csv.GetDecimal(9);
+                var dividend = csv.GetDouble(9);
 
                 return new()
                 {
@@ -123,9 +150,9 @@ namespace OHLCConverter
                     Low = l,
                     Close = c,
                     Volume = vol,
-                    Splits = extra1,
+                    SplitRatio = splitRatio,
                     Extra2 = extra2,
-                    Dividends = extra3
+                    Dividend = dividend
                 };
             }
 
@@ -159,18 +186,23 @@ namespace OHLCConverter
                 if (init)
                 {
                     AddCurrentBar();
+                    if (m1Bar.SplitRatio != _splitRatio)
+                    {
+                        _split = true;
+                        _prevSplitRatio = _splitRatio;
+                    }                  
                 }
 
                 _volume = 0;
-                _high = Decimal.MinValue;
-                _low = Decimal.MaxValue;
+                _high = Double.MinValue;
+                _low = Double.MaxValue;
                 _openTime = new TimeSpan(m1Bar.OpenTime.Hours, minutesOffset - minutesOffset % _timeframe, 0);
                 _openDate = m1Bar.Date;
                 _open = m1Bar.Open;
 
-                _extra1 = m1Bar.Splits;
+                _splitRatio = m1Bar.SplitRatio;
                 _extra2 = m1Bar.Extra2;
-                _extra3 = m1Bar.Dividends;
+                _dividend = m1Bar.Dividend;
 
                 init = true;
             }
@@ -179,9 +211,9 @@ namespace OHLCConverter
             _low = Math.Min(m1Bar.Low, _low);
             _close = m1Bar.Close;
             _volume += m1Bar.Volume;
-            _extra1 = Math.Max(m1Bar.Splits, _extra1);
+            _splitRatio = m1Bar.SplitRatio;
             _extra2 = Math.Max(m1Bar.Extra2, _extra2);
-            _extra3 = Math.Max(m1Bar.Dividends, _extra3);
+            _dividend = Math.Max(m1Bar.Dividend, _dividend);
 
 
             bool isNewBar(OHLC m1Bar)
@@ -225,12 +257,26 @@ namespace OHLCConverter
                 Low = _low,
                 Close = _close,
                 Volume = _volume,
-                Splits = _extra1,
+                SplitRatio = _splitRatio,
                 Extra2 = _extra2,
-                Dividends = _extra3
+                Dividend = _dividend
             };
 
-            chart.Add(bar);
+            _batchSaver.BatchSave(_dataManager.HistoricEODFromOHLC(_instrumentId, bar));
+            
+            if (_split)
+            {
+                _batchSaver.BatchSave(_dataManager.HistoricSplitFromOHLC(_instrumentId, bar, _prevSplitRatio));
+                _split = false;
+            }
+
+            if (bar.Dividend != 0)
+            {
+                _batchSaver.BatchSave(_dataManager.HistoricDividendFromOHLC(_instrumentId, bar));
+            }
+
+            if (_saveChart)
+                _chart.Add(bar);
         }
 
         /// <summary>
@@ -253,12 +299,14 @@ namespace OHLCConverter
         /// <returns></returns>
         public async Task WriteCSVAsync(string path)
         {
-            await File.WriteAllLinesAsync(path, chart.Select(x => x.CSVRow()));
-        }
-
-        public List<OHLC> Chart
-        {
-            get => chart;
+            if (_saveChart)
+            {
+                await File.WriteAllLinesAsync(path, _chart.Select(x => x.CSVRow()));
+            }
+            else
+            {
+                Console.WriteLine("To save chart as CSV please set _saveChart to true.");
+            }
         }
 
     }

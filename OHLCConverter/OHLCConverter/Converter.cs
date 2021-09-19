@@ -116,7 +116,7 @@ namespace OHLCConverter
                 // bars to eod, we might need to skip some data
                 // (see also your description on this).
                 if (bar1M.Date >= _dataManager.DateLimit)
-                    Convert(readBar());
+                    Convert(bar1M);
             }
 
             // commit the last in-progress bar
@@ -135,7 +135,7 @@ namespace OHLCConverter
                 // using NumberStyles.Float fixes the parsing issue.
                 // Also, there are volume values that are represented as floating points so I decided to go
                 // with deciamal (integer is not a valid option anyway) instead of float to avoid precision related issues.
-                var vol = Decimal.Parse(csv.GetString(6), NumberStyles.Float);
+                var vol = Decimal.Parse(csv.GetString(6), NumberStyles.Float, CultureInfo.InvariantCulture);  
 
                 var splitRatio = csv.GetDecimal(7);
                 var extra2 = csv.GetDecimal(8);

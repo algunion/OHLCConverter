@@ -4,8 +4,8 @@ using System.Threading.Tasks;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.IO;
-using Sylvan.Data;
-using Sylvan.Data.Csv;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace OHLCConverter
 {
@@ -94,10 +94,19 @@ namespace OHLCConverter
 
                                     var csvFiles = Array.FindAll(Directory.GetFiles(sourceDir.FullName), path => Path.GetExtension(path) == ".csv");
 
+                                    List<double> elapsed = new List<double>();
                                     foreach (var f in csvFiles)
                                     {
+                                        DateTime now = DateTime.Now;                                        
                                         Console.WriteLine($"Processing {f}");
                                         await PseudoEOD(f, timeFrame, sessionStart, sessionEnd, targetDir: targetDir.FullName);
+                                        var end = DateTime.Now.Subtract(now).TotalSeconds;
+                                        Console.WriteLine($"Elapsed: {end}");
+                                        elapsed.Add(end);
+                                        double avg = Queryable.Average(elapsed.AsQueryable());
+                                        Console.WriteLine($"mean: {avg}");
+                                        Console.WriteLine("-----------------");
+
 
                                     }
                                 }
